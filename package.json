@@ -1,6 +1,6 @@
 {
   "name": "lamps-code-review",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "description": "AI-powered code review SDK and CLI for modern web codebases",
   "type": "module",
   "main": "./dist/index.js",
