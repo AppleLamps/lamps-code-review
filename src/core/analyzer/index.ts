@@ -29,7 +29,7 @@ export class AnalyzerPipeline {
     this.options = {
       failFast: false,
       parallel: false,
-      timeout: 120000, // 2 minutes per analyzer (AI may take longer)
+      timeout: 600000, // 10 minutes for AI analyzer (3 passes)
       ...options,
     };
 
