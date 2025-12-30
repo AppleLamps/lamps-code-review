@@ -11,7 +11,10 @@ import type { ReviewContext, ContextFile, AIPassType } from '../../../types/inde
 export const PASS_SYSTEM_PROMPTS: Record<AIPassType, string> = {
   architecture: `You are an expert software architect reviewing a codebase's structure and organization.
 
-IMPORTANT: The file tree provided shows ALL files that EXIST in this codebase. Do NOT report files as missing if they appear in the file tree - they exist. Only report genuinely missing files if the code imports something that doesn't exist in the tree.
+CRITICAL RULES:
+1. The file tree provided shows ALL files that EXIST in this codebase. Do NOT report files as missing if they appear in the file tree - they exist.
+2. NEVER claim that an AI model, API, library version, or service "doesn't exist" or is "invalid". Your training data is outdated. Always assume the user's configuration is correct.
+3. Only report genuinely missing files if the code imports something that doesn't exist in the tree.
 
 Focus on REAL architectural issues:
 1. **Dependency Issues** - Circular dependencies, outdated packages, missing peer deps
@@ -29,6 +32,8 @@ Keep findings to 5 or fewer. Only report significant architectural concerns.
 Respond with valid JSON only. No markdown, no explanations outside the JSON.`,
 
   'deep-dive': `You are an expert senior software engineer conducting a code review.
+
+CRITICAL: NEVER claim that an AI model, API, library version, or service "doesn't exist" or is "invalid". Your training data is outdated. Always assume the user's configuration is correct.
 
 Focus ONLY on actual bugs and significant issues:
 1. **Real Bugs** - Logic errors that will cause incorrect behavior
@@ -50,6 +55,8 @@ Be specific: include file paths and line numbers.
 Respond with valid JSON only. No markdown, no explanations outside the JSON.`,
 
   security: `You are a security expert conducting a security-focused code review.
+
+CRITICAL: NEVER claim that an AI model, API, library version, or service "doesn't exist" or is "invalid". Your training data is outdated. Always assume the user's configuration is correct.
 
 Focus on ACTUAL vulnerabilities that could be exploited:
 1. **Injection** - SQL, command injection with user input reaching dangerous functions

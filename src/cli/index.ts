@@ -21,31 +21,35 @@ program
   .command('review')
   .description('Run a code review on a repository or directory')
   .argument('<path>', 'Path to the repository or directory to review')
-  .option('-o, --output <file>', 'Write report to file instead of stdout')
+  .option('-o, --output <file>', 'Output file path (default: lamps-review.md in target dir)')
   .option(
     '-f, --format <format>',
     'Output format: json, markdown, html',
-    'json'
+    'markdown'
   )
   .option('-m, --model <model>', 'Override AI model (e.g., openai/gpt-4o)')
-  .option('-v, --verbose', 'Enable verbose output', false)
+  .option('-q, --quiet', 'Disable verbose output (verbose is on by default)')
   .option('-c, --config <file>', 'Path to config file')
   .action(async (targetPath: string, options) => {
+    // Verbose is default, --quiet disables it
+    options.verbose = !options.quiet;
     await executeReview(targetPath, options);
   });
 
 // Default command: run review on current directory
 program
   .argument('[path]', 'Path to review (defaults to current directory)', '.')
-  .option('-o, --output <file>', 'Write report to file instead of stdout')
+  .option('-o, --output <file>', 'Output file path (default: lamps-review.md in target dir)')
   .option(
     '-f, --format <format>',
     'Output format: json, markdown, html',
-    'json'
+    'markdown'
   )
   .option('-m, --model <model>', 'Override AI model (e.g., openai/gpt-4o)')
-  .option('-v, --verbose', 'Enable verbose output', false)
+  .option('-q, --quiet', 'Disable verbose output (verbose is on by default)')
   .action(async (targetPath: string, options) => {
+    // Verbose is default, --quiet disables it
+    options.verbose = !options.quiet;
     await executeReview(targetPath, options);
   });
 

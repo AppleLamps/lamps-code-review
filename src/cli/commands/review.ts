@@ -8,6 +8,18 @@ import { LampsCodeReview } from '../../index.js';
 import type { CLIOptions, ReportFormat } from '../../types/index.js';
 
 /**
+ * Get file extension for format
+ */
+function getExtensionForFormat(format: ReportFormat): string {
+  switch (format) {
+    case 'markdown': return '.md';
+    case 'html': return '.html';
+    case 'json': return '.json';
+    default: return '.md';
+  }
+}
+
+/**
  * Execute the review command
  */
 export async function executeReview(
@@ -32,8 +44,8 @@ export async function executeReview(
   try {
     // Create reviewer instance
     const reviewer = new LampsCodeReview({
-      verbose: options.verbose,
-      format: options.format as ReportFormat,
+      verbose: options.verbose !== false, // Default to true
+      format: options.format as ReportFormat || 'markdown',
       output: options.output,
       ai: options.model ? { model: options.model } : undefined,
     });
@@ -43,19 +55,18 @@ export async function executeReview(
     const report = await reviewer.review(absolutePath);
     const duration = Date.now() - startTime;
 
-    // Output results
-    if (options.output) {
-      // Write to file
-      const formatted = reviewer.formatReport(
-        report,
-        options.format as ReportFormat || 'json'
-      );
-      fs.writeFileSync(options.output, formatted);
-      console.log(`📄 Report written to: ${options.output}`);
-    } else {
-      // Print summary to console
-      printSummary(report, duration);
-    }
+    // Determine output path (default to lamps-review.md in target directory)
+    const format = (options.format as ReportFormat) || 'markdown';
+    const ext = getExtensionForFormat(format);
+    const outputPath = options.output || path.join(absolutePath, `lamps-review${ext}`);
+
+    // Format and write report
+    const formatted = reviewer.formatReport(report, format);
+    fs.writeFileSync(outputPath, formatted);
+
+    // Print summary to console
+    printSummary(report, duration);
+    console.log(`\n📄 Report written to: ${outputPath}`);
 
     // Exit with error code if there are errors
     if (report.summary.bySeverity.error > 0) {

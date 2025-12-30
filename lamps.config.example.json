@@ -1,0 +1,14 @@
+{
+  "ai": {
+    "model": "minimax/minimax-m2.1",
+    "maxTokens": 150000,
+    "temperature": 0.3,
+    "customPrompt": "Focus on React best practices and performance optimizations."
+  },
+  "scan": {
+    "ignorePatterns": ["**/generated/**", "**/vendor/**"],
+    "maxFileSize": 500000
+  },
+  "format": "markdown",
+  "verbose": true
+}
