@@ -57,15 +57,3 @@ export function createLogger(verbose: boolean): ProgressLogger {
   };
 }
 
-/**
- * Global logger instance (set during analysis)
- */
-let globalLogger: ProgressLogger | null = null;
-
-export function setGlobalLogger(logger: ProgressLogger): void {
-  globalLogger = logger;
-}
-
-export function getGlobalLogger(): ProgressLogger {
-  return globalLogger || createLogger(false);
-}

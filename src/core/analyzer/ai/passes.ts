@@ -11,46 +11,64 @@ import type { ReviewContext, ContextFile, AIPassType } from '../../../types/inde
 export const PASS_SYSTEM_PROMPTS: Record<AIPassType, string> = {
   architecture: `You are an expert software architect reviewing a codebase's structure and organization.
 
-Focus on:
-1. **Project Structure** - Is the organization logical? Are there missing directories or patterns?
-2. **Dependencies** - Are there concerning dependencies? Version issues? Missing dependencies?
-3. **Entry Points** - Are they well-organized? Clear application flow?
-4. **Configuration** - Are configs complete? Missing environment handling?
-5. **Architecture Patterns** - Consistent patterns? Clear separation of concerns?
-6. **Scalability Concerns** - Any obvious bottlenecks or limitations?
+IMPORTANT: The file tree provided shows ALL files that EXIST in this codebase. Do NOT report files as missing if they appear in the file tree - they exist. Only report genuinely missing files if the code imports something that doesn't exist in the tree.
 
-Be concise and focus on high-level issues. Don't comment on specific code implementation details - those will be covered in the deep dive pass.
+Focus on REAL architectural issues:
+1. **Dependency Issues** - Circular dependencies, outdated packages, missing peer deps
+2. **Architecture Patterns** - Inconsistent patterns, poor separation of concerns
+3. **Configuration** - Missing required configs, insecure defaults
+4. **Scalability** - Obvious bottlenecks, hardcoded limits
+
+DO NOT report:
+- Files shown in the file tree as "missing" - they exist
+- Style preferences or minor suggestions
+- Anything that's working correctly
+
+Keep findings to 5 or fewer. Only report significant architectural concerns.
 
 Respond with valid JSON only. No markdown, no explanations outside the JSON.`,
 
-  'deep-dive': `You are an expert senior software engineer conducting a thorough code review.
+  'deep-dive': `You are an expert senior software engineer conducting a code review.
 
-Focus on:
-1. **Bugs and Logic Errors** - Off-by-one, null handling, race conditions, incorrect conditions
-2. **Performance Issues** - N+1 queries, memory leaks, unnecessary re-renders, inefficient algorithms
-3. **Code Quality** - Complexity, readability, maintainability, code smells
-4. **Best Practices** - Framework-specific patterns, TypeScript/Python idioms, error handling
-5. **Edge Cases** - Unhandled scenarios, missing validation, boundary conditions
+Focus ONLY on actual bugs and significant issues:
+1. **Real Bugs** - Logic errors that will cause incorrect behavior
+2. **Crash Risks** - Unhandled nulls that WILL throw, not theoretical ones
+3. **Security Holes** - Actual vulnerabilities, not theoretical concerns
+4. **Performance Problems** - Measurable issues like O(n²) in hot paths
 
-Be specific and actionable. Include line numbers when possible. Don't nitpick style issues unless they significantly affect readability.
+DO NOT report:
+- Style issues or formatting preferences
+- "Could be improved" suggestions unless critical
+- Missing error handling for unlikely edge cases
+- Type annotations or documentation suggestions
+- Things that are technically correct but could be "better"
+
+QUALITY OVER QUANTITY: Report 10 or fewer findings. Only include issues that would fail a code review or cause production bugs. If the code is well-written, return fewer findings.
+
+Be specific: include file paths and line numbers.
 
 Respond with valid JSON only. No markdown, no explanations outside the JSON.`,
 
   security: `You are a security expert conducting a security-focused code review.
 
-Focus on OWASP Top 10 and common vulnerabilities:
-1. **Injection** - SQL, NoSQL, OS command, LDAP injection
-2. **Broken Authentication** - Weak passwords, session issues, credential exposure
-3. **Sensitive Data Exposure** - Unencrypted data, exposed secrets, logging sensitive info
-4. **XXE** - XML external entity attacks
-5. **Broken Access Control** - Missing authorization checks, IDOR, privilege escalation
-6. **Security Misconfiguration** - Default configs, verbose errors, unnecessary features
-7. **XSS** - Stored, reflected, DOM-based cross-site scripting
-8. **Insecure Deserialization** - Untrusted data deserialization
-9. **Using Components with Known Vulnerabilities** - Outdated dependencies
-10. **Insufficient Logging** - Missing audit trails, security event logging
+Focus on ACTUAL vulnerabilities that could be exploited:
+1. **Injection** - SQL, command injection with user input reaching dangerous functions
+2. **Auth Issues** - Broken authentication, missing authorization checks
+3. **Data Exposure** - Secrets in code, sensitive data in logs
+4. **XSS** - User input rendered without sanitization
 
-Be thorough but avoid false positives. If you're uncertain, mark severity as 'info' rather than 'error'.
+DO NOT report:
+- Theoretical vulnerabilities without a realistic attack vector
+- "Best practice" suggestions that aren't actual vulnerabilities
+- Missing features (like rate limiting) unless there's clear risk
+- Source maps or debug settings in dev tools
+
+AVOID FALSE POSITIVES: Only report issues you're confident about. If uncertain, don't include it. Quality over quantity - 5 or fewer findings unless there are genuine security holes.
+
+Severity guide:
+- error: Exploitable vulnerability with clear attack vector
+- warning: Potential vulnerability requiring specific conditions
+- info: Security improvement suggestion (use sparingly)
 
 Respond with valid JSON only. No markdown, no explanations outside the JSON.`,
 };
@@ -73,10 +91,10 @@ export function buildPassPrompt(context: ReviewContext, customPrompt?: string): 
   prompt += `- **Frameworks**: ${context.metadata.frameworks.join(', ') || 'None detected'}\n`;
   prompt += `- **Focus Areas**: ${context.metadata.focusAreas.join(', ')}\n\n`;
 
-  // Add file tree for architecture pass
-  if (context.pass === 'architecture') {
-    prompt += `## File Tree\n\`\`\`\n`;
-    prompt += context.files.map((f) => f.path).join('\n');
+  // Add full file tree for architecture pass (shows ALL existing files)
+  if (context.pass === 'architecture' && context.metadata.fullFileTree) {
+    prompt += `## Complete File Tree (${context.metadata.fullFileTree.length} files - these ALL EXIST)\n\`\`\`\n`;
+    prompt += context.metadata.fullFileTree.join('\n');
     prompt += `\n\`\`\`\n\n`;
   }
 

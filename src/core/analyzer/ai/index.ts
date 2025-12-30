@@ -25,7 +25,7 @@ import {
 } from './context.js';
 import { PASS_SYSTEM_PROMPTS, buildPassPrompt } from './passes.js';
 import { parseAIResponse } from './prompts.js';
-import { getGlobalLogger } from '../../../utils/logger.js';
+import { createLogger } from '../../../utils/logger.js';
 
 
 /**
@@ -45,7 +45,7 @@ export class AIAnalyzer extends BaseAnalyzer {
 
   async analyze(context: AnalysisContext): Promise<AnalysisResult> {
     const startTime = Date.now();
-    const logger = getGlobalLogger();
+    const logger = context.logger || createLogger(false);
 
     // Check for API key
     if (!hasOpenRouterKey()) {
@@ -176,7 +176,7 @@ export class AIAnalyzer extends BaseAnalyzer {
     graph: ReturnType<typeof createEmptyGraph>,
     previousFindings: Finding[]
   ): Promise<AIPassResult> {
-    const logger = getGlobalLogger();
+    const logger = context.logger || createLogger(false);
 
     // Build context for this pass
     let reviewContext: ReviewContext;

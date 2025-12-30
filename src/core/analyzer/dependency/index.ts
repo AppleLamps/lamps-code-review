@@ -15,7 +15,7 @@ import type {
   Finding,
 } from '../../../types/index.js';
 import { BaseAnalyzer } from '../types.js';
-import { getGlobalLogger } from '../../../utils/logger.js';
+import { createLogger } from '../../../utils/logger.js';
 
 /** Patterns that indicate entry point files */
 const ENTRY_POINT_PATTERNS = [
@@ -95,7 +95,7 @@ export class DependencyAnalyzer extends BaseAnalyzer {
   async analyze(context: AnalysisContext): Promise<AnalysisResult> {
     const startTime = Date.now();
     const findings: Finding[] = [];
-    const logger = getGlobalLogger();
+    const logger = context.logger || createLogger(false);
 
     logger.phase('Dependency Analysis');
     logger.step(`Analyzing ${context.files.length} files...`);

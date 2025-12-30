@@ -111,6 +111,9 @@ export async function buildArchitectureContext(
     }
   }
 
+  // Build full file tree for architecture context
+  const fullFileTree = context.files.map((f) => f.relativePath).sort();
+
   return {
     pass: 'architecture',
     files,
@@ -119,6 +122,7 @@ export async function buildArchitectureContext(
       totalTokenEstimate: usedTokens,
       frameworks: context.frameworks.frameworks.map((f) => f.framework),
       focusAreas: ['Project structure', 'Dependencies', 'Entry points', 'Configuration'],
+      fullFileTree,
     },
   };
 }

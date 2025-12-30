@@ -122,7 +122,5 @@ export function createLogger(verbose: boolean = false) {
 // Re-export progress logger
 export {
   createLogger as createProgressLogger,
-  setGlobalLogger,
-  getGlobalLogger,
   type ProgressLogger,
 } from './logger.js';

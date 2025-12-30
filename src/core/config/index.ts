@@ -16,10 +16,19 @@ const CONFIG_FILE_NAME = 'lamps.config.json';
  * Falls back to defaults if no config file exists
  */
 export async function loadConfig(rootPath: string): Promise<LampsConfig> {
-  const configPath = path.join(rootPath, CONFIG_FILE_NAME);
+  // Resolve to absolute path to prevent traversal issues
+  const resolvedRoot = path.resolve(rootPath);
+  const configPath = path.join(resolvedRoot, CONFIG_FILE_NAME);
+
+  // Ensure config path is within the root directory (prevent path traversal)
+  const resolvedConfig = path.resolve(configPath);
+  if (!resolvedConfig.startsWith(resolvedRoot)) {
+    // Config path escaped root directory - ignore
+    return {};
+  }
 
   try {
-    const content = await fs.promises.readFile(configPath, 'utf-8');
+    const content = await fs.promises.readFile(resolvedConfig, 'utf-8');
     const config = JSON.parse(content) as LampsConfig;
     return config;
   } catch {

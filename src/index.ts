@@ -24,7 +24,7 @@ import type {
   AnalysisContext,
   AIConfig,
 } from './types/index.js';
-import { createLogger, createProgressLogger, setGlobalLogger } from './utils/index.js';
+import { createLogger, createProgressLogger } from './utils/index.js';
 
 /**
  * Main SDK class for running code reviews
@@ -46,9 +46,8 @@ export class LampsCodeReview {
     const logger = createLogger(this.config.verbose);
     logger.debug(`Starting review of: ${repoPath}`);
 
-    // Set global progress logger for analyzers
+    // Create progress logger for analyzers (passed via context, not global)
     const progressLogger = createProgressLogger(this.config.verbose || false);
-    setGlobalLogger(progressLogger);
 
     // Load config file from repo (if exists)
     const fileConfig = await loadConfig(repoPath);
@@ -90,6 +89,7 @@ export class LampsCodeReview {
       frameworks,
       config: mergedConfig,
       rootPath: scanResult.rootPath,
+      logger: progressLogger,
     };
 
     const pipelineResult = await pipeline.run(context);

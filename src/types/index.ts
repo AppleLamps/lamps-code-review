@@ -118,6 +118,15 @@ export interface AnalysisContext {
   config: ReviewConfig;
   /** Repository root path */
   rootPath: string;
+  /** Logger for progress output (avoids global state) */
+  logger?: {
+    log: (message: string) => void;
+    phase: (name: string) => void;
+    step: (message: string) => void;
+    detail: (message: string) => void;
+    success: (message: string) => void;
+    warn: (message: string) => void;
+  };
 }
 
 export interface AnalysisResult {
@@ -324,6 +333,8 @@ export interface ReviewContext {
     totalTokenEstimate: number;
     frameworks: string[];
     focusAreas: string[];
+    /** Full file tree (all paths in codebase) - for architecture pass */
+    fullFileTree?: string[];
   };
 }
 
