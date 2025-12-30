@@ -246,3 +246,97 @@ export interface CLIOptions {
   /** Override AI model */
   model?: string;
 }
+
+// ============================================================================
+// Dependency Graph Types
+// ============================================================================
+
+export type FileCategory = 'entry' | 'config' | 'component' | 'util' | 'test' | 'api' | 'other';
+
+export interface FileNode {
+  /** Relative path to the file */
+  path: string;
+  /** Files this file imports */
+  imports: string[];
+  /** Files that import this file */
+  importedBy: string[];
+  /** Exported symbols (function/class/const names) */
+  exports: string[];
+  /** File category for prioritization */
+  category: FileCategory;
+  /** File size in bytes */
+  size: number;
+  /** Priority score (calculated) */
+  priority?: number;
+}
+
+export interface DependencyGraph {
+  /** All files in the graph */
+  files: Map<string, FileNode>;
+  /** Entry point files */
+  entryPoints: string[];
+  /** Configuration files */
+  configFiles: string[];
+  /** Test files */
+  testFiles: string[];
+  /** API route files */
+  apiFiles: string[];
+}
+
+// ============================================================================
+// Smart Context Types
+// ============================================================================
+
+export type AIPassType = 'architecture' | 'deep-dive' | 'security';
+
+export interface CodeSlice {
+  /** Starting line number (1-based) */
+  startLine: number;
+  /** Ending line number (1-based) */
+  endLine: number;
+  /** The actual code content */
+  content: string;
+  /** Why this slice was included */
+  reason: string;
+}
+
+export interface ContextFile {
+  /** Relative path to the file */
+  path: string;
+  /** Full file content (if included) */
+  content?: string;
+  /** Relevant code slices (if not full content) */
+  slices?: CodeSlice[];
+  /** Why this file was included */
+  reason: string;
+  /** Priority score */
+  priority: number;
+}
+
+export interface ReviewContext {
+  /** Which AI pass this context is for */
+  pass: AIPassType;
+  /** Files to include in this pass */
+  files: ContextFile[];
+  /** Metadata about the context */
+  metadata: {
+    totalFiles: number;
+    totalTokenEstimate: number;
+    frameworks: string[];
+    focusAreas: string[];
+  };
+}
+
+export interface AIPassResult {
+  /** Which pass produced these findings */
+  pass: AIPassType;
+  /** Findings from this pass */
+  findings: Finding[];
+  /** Summary from the AI */
+  summary: string;
+  /** Token usage */
+  tokenUsage?: {
+    input: number;
+    output: number;
+  };
+}

@@ -12,6 +12,7 @@ import type {
 } from './types.js';
 import { createStaticAnalyzer } from './static/index.js';
 import { createAIAnalyzer } from './ai/index.js';
+import { createDependencyAnalyzer } from './dependency/index.js';
 
 /** Execution order for phases */
 const PHASE_ORDER: AnalyzerPhase[] = ['static', 'ai', 'post'];
@@ -34,6 +35,7 @@ export class AnalyzerPipeline {
 
     // Register built-in analyzers
     this.registerAnalyzer(createStaticAnalyzer());
+    this.registerAnalyzer(createDependencyAnalyzer());
 
     // Register AI analyzer if config provided
     if (aiConfig) {
@@ -125,10 +127,16 @@ export class AnalyzerPipeline {
 
       const phaseResults: AnalysisResult[] = [];
 
+      // Augment context with previous results for later phases
+      const augmentedContext = {
+        ...context,
+        _previousResults: allResults,
+      } as AnalysisContext & { _previousResults: AnalysisResult[] };
+
       if (this.options.parallel) {
         // Run analyzers in parallel
         const promises = phaseAnalyzers.map((analyzer) =>
-          this.runAnalyzer(analyzer, context)
+          this.runAnalyzer(analyzer, augmentedContext)
         );
         const results = await Promise.allSettled(promises);
 
@@ -155,7 +163,7 @@ export class AnalyzerPipeline {
         // Run analyzers sequentially
         for (const analyzer of phaseAnalyzers) {
           try {
-            const result = await this.runAnalyzer(analyzer, context);
+            const result = await this.runAnalyzer(analyzer, augmentedContext);
             phaseResults.push(result);
           } catch (error) {
             const errorMessage =
@@ -252,3 +260,4 @@ export class AnalyzerPipeline {
 export * from './types.js';
 export { createStaticAnalyzer } from './static/index.js';
 export { createAIAnalyzer } from './ai/index.js';
+export { createDependencyAnalyzer } from './dependency/index.js';

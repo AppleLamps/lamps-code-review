@@ -1,28 +1,42 @@
 /**
  * AI Analyzer module
- * Uses OpenRouter to perform AI-powered code review
+ * Multi-pass AI-powered code review using OpenRouter
  */
 
-import * as fs from 'node:fs';
-import type { AnalysisContext, AnalysisResult, AIConfig, Finding, Severity } from '../../../types/index.js';
+import type {
+  AnalysisContext,
+  AnalysisResult,
+  AIConfig,
+  Finding,
+  Severity,
+  AIPassType,
+  ReviewContext,
+  AIPassResult,
+} from '../../../types/index.js';
 import { BaseAnalyzer } from '../types.js';
 import { chat, OpenRouterError } from './openrouter.js';
-import { DEFAULT_SYSTEM_PROMPT, buildUserPrompt, parseAIResponse } from './prompts.js';
 import { getOpenRouterKey, hasOpenRouterKey } from '../../config/index.js';
+import {
+  buildArchitectureContext,
+  buildDeepDiveContext,
+  buildSecurityContext,
+  getDependencyGraphFromResults,
+  createEmptyGraph,
+} from './context.js';
+import { PASS_SYSTEM_PROMPTS, buildPassPrompt } from './passes.js';
+import { parseAIResponse } from './prompts.js';
 
-/** Maximum file size to include in AI analysis (100KB) */
-const MAX_FILE_SIZE_FOR_AI = 100 * 1024;
-
-/** Maximum total content size to send to AI (500KB) */
-const MAX_TOTAL_CONTENT_SIZE = 500 * 1024;
 
 /**
- * AI-powered code analyzer using OpenRouter
+ * Multi-pass AI-powered code analyzer using OpenRouter
  */
 export class AIAnalyzer extends BaseAnalyzer {
   readonly name = 'ai';
   readonly phase = 'ai' as const;
-  readonly description = 'AI-powered code review using OpenRouter';
+  readonly description = 'Multi-pass AI-powered code review using OpenRouter';
+
+  /** Store static analysis findings from previous phase */
+  private staticFindings: Finding[] = [];
 
   constructor(private config: AIConfig) {
     super();
@@ -48,50 +62,71 @@ export class AIAnalyzer extends BaseAnalyzer {
       );
     }
 
-    try {
-      // Load file contents
-      const filesWithContent = await this.loadFileContents(context.files);
+    if (context.files.length === 0) {
+      return this.createResult([], startTime, {
+        skipped: true,
+        reason: 'no-files',
+      });
+    }
 
-      if (filesWithContent.length === 0) {
-        return this.createResult([], startTime, {
-          skipped: true,
-          reason: 'no-files',
-        });
+    try {
+      // Get dependency graph from static phase results (if available)
+      // This will be set by the pipeline from previous phase results
+      const graph = this.getDependencyGraph(context) || createEmptyGraph(context.files);
+
+      // Collect static findings for context
+      this.staticFindings = this.getStaticFindings(context);
+
+      // Run all passes
+      const allPassResults: AIPassResult[] = [];
+      const allFindings: Finding[] = [];
+
+      // Log start
+      if (context.config.verbose) {
+        console.log('Starting multi-pass AI analysis...');
       }
 
-      // Build the prompt
-      const userPrompt = buildUserPrompt(
-        filesWithContent,
-        context.frameworks,
-        this.config.customPrompt
-      );
+      // Pass 1: Architecture
+      const archResult = await this.runPass('architecture', context, graph, allFindings);
+      allPassResults.push(archResult);
+      allFindings.push(...archResult.findings);
 
-      // Call AI
-      const apiKey = getOpenRouterKey();
-      const response = await chat(
-        DEFAULT_SYSTEM_PROMPT,
-        userPrompt,
-        this.config,
-        apiKey
-      );
+      if (context.config.verbose) {
+        console.log(`  Architecture pass: ${archResult.findings.length} findings`);
+      }
 
-      // Parse response
-      const parsed = parseAIResponse(response);
+      // Pass 2: Deep Dive
+      const deepResult = await this.runPass('deep-dive', context, graph, allFindings);
+      allPassResults.push(deepResult);
+      allFindings.push(...deepResult.findings);
 
-      // Convert to findings
-      const findings: Finding[] = parsed.findings.map((f) => ({
-        ruleId: f.ruleId,
-        severity: f.severity as Severity,
-        file: f.file,
-        line: f.line,
-        message: f.message,
-        suggestion: f.suggestion,
-      }));
+      if (context.config.verbose) {
+        console.log(`  Deep-dive pass: ${deepResult.findings.length} findings`);
+      }
 
-      return this.createResult(findings, startTime, {
+      // Pass 3: Security
+      const secResult = await this.runPass('security', context, graph, allFindings);
+      allPassResults.push(secResult);
+      allFindings.push(...secResult.findings);
+
+      if (context.config.verbose) {
+        console.log(`  Security pass: ${secResult.findings.length} findings`);
+      }
+
+      // Deduplicate findings
+      const dedupedFindings = this.deduplicateFindings(allFindings);
+
+      // Combine summaries
+      const combinedSummary = allPassResults
+        .map((r) => `**${r.pass}**: ${r.summary}`)
+        .join('\n\n');
+
+      return this.createResult(dedupedFindings, startTime, {
         model: this.config.model,
-        summary: parsed.summary,
-        filesAnalyzed: filesWithContent.length,
+        summary: combinedSummary,
+        passResults: allPassResults,
+        filesAnalyzed: context.files.length,
+        multiPass: true,
       });
     } catch (error) {
       // Handle errors gracefully
@@ -118,49 +153,135 @@ export class AIAnalyzer extends BaseAnalyzer {
   }
 
   /**
-   * Load file contents for AI analysis
-   * Respects size limits and filters appropriately
+   * Run a single AI pass
    */
-  private async loadFileContents(
-    files: AnalysisContext['files']
-  ): Promise<AnalysisContext['files']> {
-    const result: AnalysisContext['files'] = [];
-    let totalSize = 0;
+  private async runPass(
+    passType: AIPassType,
+    context: AnalysisContext,
+    graph: ReturnType<typeof createEmptyGraph>,
+    previousFindings: Finding[]
+  ): Promise<AIPassResult> {
+    // Build context for this pass
+    let reviewContext: ReviewContext;
 
-    // Sort by size (smaller files first) to maximize coverage
-    const sortedFiles = [...files].sort((a, b) => a.size - b.size);
-
-    for (const file of sortedFiles) {
-      // Skip files that are too large
-      if (file.size > MAX_FILE_SIZE_FOR_AI) {
-        continue;
-      }
-
-      // Check total size limit
-      if (totalSize + file.size > MAX_TOTAL_CONTENT_SIZE) {
+    switch (passType) {
+      case 'architecture':
+        reviewContext = await buildArchitectureContext(context, graph);
         break;
-      }
+      case 'deep-dive':
+        reviewContext = await buildDeepDiveContext(
+          context,
+          graph,
+          this.staticFindings,
+          previousFindings.filter((f) => f.ruleId.startsWith('ai/arch'))
+        );
+        break;
+      case 'security':
+        reviewContext = await buildSecurityContext(context, graph);
+        break;
+    }
 
-      try {
-        // Load content if not already loaded
-        let content = file.content;
-        if (content === undefined) {
-          content = await fs.promises.readFile(file.path, 'utf-8');
+    // Skip if no files to review
+    if (reviewContext.files.length === 0) {
+      return {
+        pass: passType,
+        findings: [],
+        summary: `No relevant files for ${passType} review`,
+      };
+    }
+
+    // Build prompts
+    const systemPrompt = PASS_SYSTEM_PROMPTS[passType];
+    const userPrompt = buildPassPrompt(reviewContext, this.config.customPrompt);
+
+    // Call AI
+    const apiKey = getOpenRouterKey();
+    const response = await chat(systemPrompt, userPrompt, this.config, apiKey);
+
+    // Parse response
+    const parsed = parseAIResponse(response);
+
+    // Convert to findings with proper severity types
+    const findings: Finding[] = parsed.findings.map((f) => ({
+      ruleId: f.ruleId,
+      severity: f.severity as Severity,
+      file: f.file,
+      line: f.line,
+      message: f.message,
+      suggestion: f.suggestion,
+    }));
+
+    return {
+      pass: passType,
+      findings,
+      summary: parsed.summary,
+    };
+  }
+
+  /**
+   * Get dependency graph from context or previous results
+   */
+  private getDependencyGraph(context: AnalysisContext): ReturnType<typeof createEmptyGraph> | null {
+    // The dependency graph is stored in the context by the pipeline
+    // after the static phase runs
+    const metadata = (context as AnalysisContext & { _previousResults?: AnalysisResult[] })._previousResults;
+    if (metadata) {
+      return getDependencyGraphFromResults(metadata);
+    }
+    return null;
+  }
+
+  /**
+   * Get static findings from previous phase
+   */
+  private getStaticFindings(context: AnalysisContext): Finding[] {
+    const metadata = (context as AnalysisContext & { _previousResults?: AnalysisResult[] })._previousResults;
+    if (!metadata) return [];
+
+    const staticResult = metadata.find((r) => r.analyzerName === 'static');
+    return staticResult?.findings || [];
+  }
+
+  /**
+   * Deduplicate findings from multiple passes
+   * Keeps the highest severity if duplicates found
+   */
+  private deduplicateFindings(findings: Finding[]): Finding[] {
+    const seen = new Map<string, Finding>();
+    const severityOrder: Record<Severity, number> = {
+      error: 4,
+      warning: 3,
+      info: 2,
+      hint: 1,
+    };
+
+    for (const finding of findings) {
+      // Create a key based on file, line, and message similarity
+      const key = `${finding.file}:${finding.line || 0}:${this.normalizeMessage(finding.message)}`;
+
+      const existing = seen.get(key);
+      if (!existing) {
+        seen.set(key, finding);
+      } else {
+        // Keep the one with higher severity
+        if (severityOrder[finding.severity] > severityOrder[existing.severity]) {
+          seen.set(key, finding);
         }
-
-        result.push({
-          ...file,
-          content,
-        });
-
-        totalSize += file.size;
-      } catch {
-        // Skip files that can't be read
-        continue;
       }
     }
 
-    return result;
+    return Array.from(seen.values());
+  }
+
+  /**
+   * Normalize message for deduplication comparison
+   */
+  private normalizeMessage(message: string): string {
+    return message
+      .toLowerCase()
+      .replace(/\s+/g, ' ')
+      .replace(/[^a-z0-9 ]/g, '')
+      .slice(0, 50);
   }
 }
 
