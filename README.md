@@ -121,7 +121,7 @@ Create a `lamps.config.json` in your project root:
 ```json
 {
   "ai": {
-    "model": "anthropic/claude-sonnet-4",
+    "model": "minimax/minimax-m2.1",
     "customPrompt": "Focus on security and performance issues",
     "maxTokens": 4096,
     "temperature": 0.3
@@ -141,9 +141,9 @@ Create a `lamps.config.json` in your project root:
 
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
-| `model` | string | `anthropic/claude-sonnet-4` | OpenRouter model ID |
+| `model` | string | `minimax/minimax-m2.1` | OpenRouter model ID |
 | `customPrompt` | string | - | Additional instructions for the AI reviewer |
-| `maxTokens` | number | `4096` | Maximum tokens in AI response |
+| `maxTokens` | number | `150000` | Maximum tokens in AI response |
 | `temperature` | number | `0.3` | AI temperature (0-1, lower = more focused) |
 
 #### Scan Options
@@ -161,7 +161,8 @@ Any model on [OpenRouter](https://openrouter.ai/models) works, including:
 
 | Model | ID | Best For |
 |-------|-----|----------|
-| Claude Sonnet 4 | `anthropic/claude-sonnet-4` | Balanced quality/speed (default) |
+| MiniMax M2.1 | `minimax/minimax-m2.1` | Large context, fast (default) |
+| Claude Sonnet 4 | `anthropic/claude-sonnet-4` | Balanced quality/speed |
 | Claude Opus 4 | `anthropic/claude-opus-4` | Highest quality |
 | GPT-4o | `openai/gpt-4o` | Fast, good quality |
 | Gemini 2.0 Flash | `google/gemini-2.0-flash-thinking-exp-1219` | Very fast |

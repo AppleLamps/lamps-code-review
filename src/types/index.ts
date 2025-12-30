@@ -198,8 +198,8 @@ export interface AIConfig {
 
 /** Default AI configuration */
 export const DEFAULT_AI_CONFIG: AIConfig = {
-  model: 'anthropic/claude-sonnet-4',
-  maxTokens: 4096,
+  model: 'minimax/minimax-m2.1',
+  maxTokens: 150000,
   temperature: 0.3,
 };
 
