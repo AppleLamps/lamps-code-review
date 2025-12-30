@@ -15,6 +15,7 @@ import type {
   Finding,
 } from '../../../types/index.js';
 import { BaseAnalyzer } from '../types.js';
+import { getGlobalLogger } from '../../../utils/logger.js';
 
 /** Patterns that indicate entry point files */
 const ENTRY_POINT_PATTERNS = [
@@ -94,12 +95,37 @@ export class DependencyAnalyzer extends BaseAnalyzer {
   async analyze(context: AnalysisContext): Promise<AnalysisResult> {
     const startTime = Date.now();
     const findings: Finding[] = [];
+    const logger = getGlobalLogger();
+
+    logger.phase('Dependency Analysis');
+    logger.step(`Analyzing ${context.files.length} files...`);
 
     // Build the dependency graph
     const graph = await this.buildGraph(context.files, context.rootPath);
 
     // Calculate priority scores for each file
     this.calculatePriorities(graph);
+
+    // Log stats
+    logger.detail(`Entry points: ${graph.entryPoints.length}`);
+    logger.detail(`Config files: ${graph.configFiles.length}`);
+    logger.detail(`API routes: ${graph.apiFiles.length}`);
+    logger.detail(`Test files: ${graph.testFiles.length}`);
+
+    // Find high-priority files
+    const highPriority = Array.from(graph.files.values())
+      .filter((n) => (n.priority || 0) > 50)
+      .sort((a, b) => (b.priority || 0) - (a.priority || 0))
+      .slice(0, 5);
+
+    if (highPriority.length > 0) {
+      logger.step('Top priority files:');
+      for (const node of highPriority) {
+        logger.detail(`${node.path} (score: ${node.priority})`);
+      }
+    }
+
+    logger.success(`Dependency graph built in ${Date.now() - startTime}ms`);
 
     // Store the graph in metadata for use by AI analyzer
     return this.createResult(findings, startTime, {

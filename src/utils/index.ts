@@ -118,3 +118,11 @@ export function createLogger(verbose: boolean = false) {
     warn: (message: string) => console.warn(`[WARN] ${message}`),
   };
 }
+
+// Re-export progress logger
+export {
+  createLogger as createProgressLogger,
+  setGlobalLogger,
+  getGlobalLogger,
+  type ProgressLogger,
+} from './logger.js';

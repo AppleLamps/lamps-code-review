@@ -25,6 +25,7 @@ import {
 } from './context.js';
 import { PASS_SYSTEM_PROMPTS, buildPassPrompt } from './passes.js';
 import { parseAIResponse } from './prompts.js';
+import { getGlobalLogger } from '../../../utils/logger.js';
 
 
 /**
@@ -44,9 +45,11 @@ export class AIAnalyzer extends BaseAnalyzer {
 
   async analyze(context: AnalysisContext): Promise<AnalysisResult> {
     const startTime = Date.now();
+    const logger = getGlobalLogger();
 
     // Check for API key
     if (!hasOpenRouterKey()) {
+      logger.warn('OPENROUTER_API_KEY not set - skipping AI analysis');
       return this.createResult(
         [
           {
@@ -63,6 +66,7 @@ export class AIAnalyzer extends BaseAnalyzer {
     }
 
     if (context.files.length === 0) {
+      logger.warn('No files to analyze');
       return this.createResult([], startTime, {
         skipped: true,
         reason: 'no-files',
@@ -70,56 +74,65 @@ export class AIAnalyzer extends BaseAnalyzer {
     }
 
     try {
+      logger.phase('AI Analysis (Multi-Pass)');
+      logger.step(`Model: ${this.config.model}`);
+      logger.step(`Files in codebase: ${context.files.length}`);
+
       // Get dependency graph from static phase results (if available)
-      // This will be set by the pipeline from previous phase results
       const graph = this.getDependencyGraph(context) || createEmptyGraph(context.files);
+
+      // Log graph stats
+      const graphStats = {
+        entryPoints: graph.entryPoints.length,
+        configFiles: graph.configFiles.length,
+        apiFiles: graph.apiFiles.length,
+      };
+      logger.detail(`Dependency graph: ${graphStats.entryPoints} entry points, ${graphStats.configFiles} configs, ${graphStats.apiFiles} API routes`);
 
       // Collect static findings for context
       this.staticFindings = this.getStaticFindings(context);
+      if (this.staticFindings.length > 0) {
+        logger.detail(`Static findings to incorporate: ${this.staticFindings.length}`);
+      }
 
       // Run all passes
       const allPassResults: AIPassResult[] = [];
       const allFindings: Finding[] = [];
 
-      // Log start
-      if (context.config.verbose) {
-        console.log('Starting multi-pass AI analysis...');
-      }
-
       // Pass 1: Architecture
+      logger.step('Pass 1/3: Architecture Review');
       const archResult = await this.runPass('architecture', context, graph, allFindings);
       allPassResults.push(archResult);
       allFindings.push(...archResult.findings);
-
-      if (context.config.verbose) {
-        console.log(`  Architecture pass: ${archResult.findings.length} findings`);
-      }
+      logger.success(`Architecture: ${archResult.findings.length} findings`);
 
       // Pass 2: Deep Dive
+      logger.step('Pass 2/3: Deep Dive Review');
       const deepResult = await this.runPass('deep-dive', context, graph, allFindings);
       allPassResults.push(deepResult);
       allFindings.push(...deepResult.findings);
-
-      if (context.config.verbose) {
-        console.log(`  Deep-dive pass: ${deepResult.findings.length} findings`);
-      }
+      logger.success(`Deep-dive: ${deepResult.findings.length} findings`);
 
       // Pass 3: Security
+      logger.step('Pass 3/3: Security Review');
       const secResult = await this.runPass('security', context, graph, allFindings);
       allPassResults.push(secResult);
       allFindings.push(...secResult.findings);
-
-      if (context.config.verbose) {
-        console.log(`  Security pass: ${secResult.findings.length} findings`);
-      }
+      logger.success(`Security: ${secResult.findings.length} findings`);
 
       // Deduplicate findings
       const dedupedFindings = this.deduplicateFindings(allFindings);
+      if (allFindings.length !== dedupedFindings.length) {
+        logger.detail(`Deduplicated: ${allFindings.length} → ${dedupedFindings.length} findings`);
+      }
 
       // Combine summaries
       const combinedSummary = allPassResults
         .map((r) => `**${r.pass}**: ${r.summary}`)
         .join('\n\n');
+
+      const duration = Date.now() - startTime;
+      logger.success(`AI analysis complete in ${(duration / 1000).toFixed(1)}s`);
 
       return this.createResult(dedupedFindings, startTime, {
         model: this.config.model,
@@ -136,6 +149,8 @@ export class AIAnalyzer extends BaseAnalyzer {
           : error instanceof Error
             ? error.message
             : 'Unknown error during AI analysis';
+
+      logger.warn(`AI analysis failed: ${errorMessage}`);
 
       return this.createResult(
         [
@@ -161,6 +176,8 @@ export class AIAnalyzer extends BaseAnalyzer {
     graph: ReturnType<typeof createEmptyGraph>,
     previousFindings: Finding[]
   ): Promise<AIPassResult> {
+    const logger = getGlobalLogger();
+
     // Build context for this pass
     let reviewContext: ReviewContext;
 
@@ -181,8 +198,22 @@ export class AIAnalyzer extends BaseAnalyzer {
         break;
     }
 
+    // Log context details
+    logger.detail(`Sending ${reviewContext.files.length} files (~${Math.round(reviewContext.metadata.totalTokenEstimate / 1000)}K tokens)`);
+    if (reviewContext.files.length > 0 && reviewContext.files.length <= 5) {
+      for (const file of reviewContext.files) {
+        logger.detail(`  ${file.path} (${file.reason})`);
+      }
+    } else if (reviewContext.files.length > 5) {
+      for (const file of reviewContext.files.slice(0, 3)) {
+        logger.detail(`  ${file.path} (${file.reason})`);
+      }
+      logger.detail(`  ... and ${reviewContext.files.length - 3} more files`);
+    }
+
     // Skip if no files to review
     if (reviewContext.files.length === 0) {
+      logger.warn(`No relevant files for ${passType} review`);
       return {
         pass: passType,
         findings: [],
@@ -195,8 +226,12 @@ export class AIAnalyzer extends BaseAnalyzer {
     const userPrompt = buildPassPrompt(reviewContext, this.config.customPrompt);
 
     // Call AI
+    logger.detail('Calling AI...');
+    const callStart = Date.now();
     const apiKey = getOpenRouterKey();
     const response = await chat(systemPrompt, userPrompt, this.config, apiKey);
+    const callDuration = Date.now() - callStart;
+    logger.detail(`AI responded in ${(callDuration / 1000).toFixed(1)}s`);
 
     // Parse response
     const parsed = parseAIResponse(response);
